@@ -19,20 +19,27 @@ class Node:
     alpha = -10000  # O nodo tem este valor ou um valor menor que este (limite superior, máximo)
     beta = 10000    # O nodo tem este valor ou um valor maior que este (limite inferior, mínimo)
     f, g, h = 0, 0, 0
-    parent: 'Node' = None
+    parent = None
     edge = (-1,-1)
     maximizer = False
     calculated = False
-    children: List['Node'] = []
+    children = []
 
     def __init__(self, isMax, parent, board, edge, player):
         self.maximizer = isMax
         self.board = copy.deepcopy(board)
         self.parent = parent
         if self.parent is not None:
+            self.board[edge[0]-1][edge[1]-1] = copy.copy(adversary(player))
+            advH = neighborhoodValue(self.board,self.edge[0],self.edge[1],adversary(player))
             self.board[edge[0]-1][edge[1]-1] = copy.copy(player)
             self.edge = copy.copy(edge)
             self.g = copy.copy(self.parent.f)
+            myH = neighborhoodValue(self.board,self.edge[0],self.edge[1],player)
+            if myH > advH:
+                self.h = myH + 1
+            else:
+                self.h = advH
             self.h = neighborhoodValue(self.board,self.edge[0],self.edge[1],player)
             if self.maximizer:
                 self.h *= -1
@@ -46,7 +53,7 @@ class Node:
     def expand(self, positions, player):
         for position in range(len(positions)):
             child = Node(not self.maximizer,self,self.board,positions[position],player)
-            child.children: List['Node'] = []
+            child.children = []
             #print(f'[B] grandchildren aux = {child.children} from {child}')
             self.children.append(copy.copy(child))
             #print(f'[A] children = {self.children}')
@@ -353,7 +360,7 @@ def neighborhoodValue(state,column,line,player):
         if windowValues[w] > 74:
             total = 1000
     if total < 1000:
-        total = windowValue(up[0],player) + windowValue(down[0],player) + windowValue(vert[0],player)
+        total = max(windowValues) + (windowValues[0]+windowValues[1]+windowValues[2])/10
         total *= max(sandwitchValue(up[0],player,up[1]),sandwitchValue(down[0],player,down[1]),sandwitchValue(vert[0],player,vert[1]))
     return total
 
@@ -420,7 +427,7 @@ player = int(sys.argv[1])
 occupiedSpaces = []
 trumpSpeedUp = True
 triedAndFailed = False
-bestNodes: List['Node'] = None
+bestNodes = None
 removing = False
 move = None
 triedMoves = []
@@ -439,7 +446,7 @@ while not done:
 
     # Se for a vez do jogador
     if player_turn==player:
-        root: 'Node' = None
+        root = None
         start_time = time.time()
         if not triedAndFailed:
             # Pega a última jogada
@@ -546,16 +553,16 @@ while not done:
 
         # Se com o movimento o jogo acabou, o cliente venceu
         if msg[0]==0:
-            print(f'I won by completing my sequence at {move}!')
+            print("I won by completing my sequence at {move}!")
             done = True
         elif msg[0]<0:
             triedAndFailed = True
-            print(f'What? Why can\'t I play on {move}?')
+            print("What? Why can\'t I play on {move}?")
             raise Exception(msg[1])
         else:
             #Se teve sucesso, começa a limpeza
             occupiedSpaces.append(move)
-            print(f'I played at {move} after thinking by {time.time() - start_time} seconds')
+            print("I played at %s after thinking by %s seconds " % (move, time.time() - start_time))
             player_turn = adversary(player)
             if root is not None:
                 s = ''
