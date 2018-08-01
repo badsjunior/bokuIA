@@ -18,29 +18,34 @@ class Node:
     board = []
     alpha = -10000  # O nodo tem este valor ou um valor menor que este (limite superior, máximo)
     beta = 10000    # O nodo tem este valor ou um valor maior que este (limite inferior, mínimo)
+    f, g, h = 0, 0, 0
     parent: 'Node' = None
     edge = (-1,-1)
     maximizer = False
     calculated = False
     children: List['Node'] = []
 
-    def __init__(self, isMax):
+    def __init__(self, isMax, parent, board, edge, player):
         self.maximizer = isMax
-        if self.maximizer:
-            self.alphabeta = -10000
+        self.board = copy.deepcopy(board)
+        self.parent = parent
+        if self.parent is not None:
+            self.board[edge[0]-1][edge[1]-1] = copy.copy(player)
+            self.edge = copy.copy(edge)
+            self.g = copy.copy(self.parent.f)
+            self.h = neighborhoodValue(self.board,self.edge[0],self.edge[1],player)
+            if self.maximizer:
+                self.h *= -1
         else:
-            self.alphabeta = 10000
-
+            self.edge = (-1,-1)
+            self.g, self.h = 0, 0
+        self.f = self.g + self.h
     def __repr__(self):
-        return '--' + str(self.edge) + '-> [' + str(self.beta) + ';' + str(self.alpha) + ']'# = ' + str(self.board)
+        return '-' + str(self.edge) + '-> [' + str(self.beta) + ';' + str(self.alpha) + ']' + '<' + str(self.f) + '=' + str(self.g) + '+' + str(self.h) + '>'# = ' + str(self.board)
 
     def expand(self, positions, player):
         for position in range(len(positions)):
-            child = Node(not self.maximizer)
-            child.board = copy.deepcopy(self.board)
-            child.board[positions[position][0]-1][positions[position][1]-1] = copy.copy(player)
-            child.edge = copy.copy(positions[position])
-            child.parent = self
+            child = Node(not self.maximizer,self,self.board,positions[position],player)
             child.children: List['Node'] = []
             #print(f'[B] grandchildren aux = {child.children} from {child}')
             self.children.append(copy.copy(child))
@@ -54,6 +59,7 @@ class Node:
             calculated = [child.beta for child in self.children if child.calculated == True]
         else:
             calculated = [child.alpha for child in self.children if child.calculated == True]
+        # print(calculated)
         if len(calculated) > 0:
             self.alpha = max(calculated)
         if self.alpha != oldAlpha and self.maximizer and self.parent is not None:
@@ -81,6 +87,7 @@ class Node:
             calculated = [child.beta for child in self.children if child.calculated == True]
         else:
             calculated = [child.alpha for child in self.children if child.calculated == True]
+        # print(calculated)
         if len(calculated) > 0:
             self.beta = max(calculated)
         if self.beta != oldBeta and not self.maximizer and self.parent is not None:
@@ -103,11 +110,12 @@ class Node:
         #             self.parent.updateBeta(self.alpha)
 
 
-    def updateAlphaBeta(self,newValue):
-        self.alpha = copy.copy(newValue)
-        self.beta = copy.copy(newValue)
-        self.updateAlpha()
-        self.updateBeta()
+    def evaluate(self):
+        self.alpha = copy.copy(self.f)
+        self.beta = copy.copy(self.f)
+        self.calculated = True
+        self.parent.updateAlpha()
+        self.parent.updateBeta()
 
 
     def destruction(self):                          #Top-down delete
@@ -116,12 +124,21 @@ class Node:
         self.children.clear()
         del self
 
+    def tree(self,s,depth):
+        for d in range(depth):
+            s += '    '
+        s += str(self) + "\n"
+        for c in range(len(self.children)):
+            s += self.children[c].tree(s,depth+1)
+        return s
+
 def depthExpansion(node, moves, depth, player):
     if depth < 2:
     #if len(moves) > 0:
         #print(f'{depth}{node} : {len(moves)}')
         node.expand(moves, player)
-        uncalculated: List['Node'] = [child for child in node.children if child.calculated == False]
+        uncalculatedChildren = copy.copy(node.children)
+        uncalculated = [child for child in uncalculatedChildren if child.calculated == False]
         while len(uncalculated) > 0:
             validChildMoves = copy.copy(moves)
             #print(f'uncalculatedEdge = {uncalculated[0].edge}; moves = {moves}\nchild moves = {validChildMoves}')
@@ -138,28 +155,11 @@ def depthExpansion(node, moves, depth, player):
             if node is None:
                 break
             # Senão, atualiza a lista de não calculados
-            uncalculated = [child for child in node.children if child.calculated == False]
+            uncalculatedChildren = copy.copy(node.children)
+            uncalculated = [child for child in uncalculatedChildren if child.calculated == False]
     else:
         #print(f'{depth}{node} : {len(moves)}')
-        evaluateNode(node, adversary(player))
-
-def removalEvaluateNode(node, player):
-    h = neighborhoodValue(node.board,node.edge[0],node.edge[1],player)
-    node.updateBeta(h)
-
-def evaluateNode(node, player):
-    if node.maximizer:
-        h1 = neighborhoodValue(node.board,node.edge[0],node.edge[1],player)
-        h2 = neighborhoodValue(node.parent.board,node.parent.edge[0],node.parent.edge[1],adversary(player))
-        h = -h1 + 2*h2
-        node.updateAlphaBeta(h)
-    else:
-        h1 = neighborhoodValue(node.board,node.edge[0],node.edge[1],player)
-        h2 = neighborhoodValue(node.parent.board,node.parent.edge[0],node.parent.edge[1],adversary(player))
-        h = h1 - 2*h2
-        node.updateAlphaBeta(h)
-    if node is not None:            # Se o nodo não foi podado
-        node.calculated = True      # Então marca como calculado
+        node.evaluate()
 
 def topNeighbor(column, line):
     if line > 1:
@@ -476,13 +476,12 @@ while not done:
                     removing = True
 
                 # Cria a raíz do minimax com o estado atual (é um max, pois escolhe entre as jogadas do jogador)
-                root = Node(True)
-                root.board = copy.deepcopy(board)
+                root = Node(True,None,board,None,player)
 
                 if removing:
                     root.expand(validMoves,adversary(player))
                     for c in range(len(root.children)):
-                        removalEvaluateNode(root.children[c],adversary(player))
+                        root.children[c].evaluate()
                 else:
                 # Poda Trump
                     if trumpSpeedUp:
@@ -524,7 +523,11 @@ while not done:
                         print("Fall of the Wall!")
 
                 # Ordena (decrescente) os nodos filhos do estado atual (as possíveis jogadas neste turno) pela pontuação
-                bestNodes = sorted(root.children, key=lambda child: child.alphabeta, reverse=True)
+                bestNodes = sorted(root.children, key=lambda child: child.beta, reverse=True)
+                # print(bestNodes)
+                # print(f'grandchildren: {root.children[0].children}')
+                # print(f'grandgrandchildren: {root.children[0].children[0].children}')
+                # print(f'wtfchildren: {root.children[0].children[0].children[0].children}')
 
         # Se não tem nodos para escolher provavelmente foi um bug ou todos os movimentos possíveis são proibidos
         if move is None:
@@ -555,6 +558,8 @@ while not done:
             print(f'I played at {move} after thinking by {time.time() - start_time} seconds')
             player_turn = adversary(player)
             if root is not None:
+                s = ''
+                #print(root.tree(s,0))
                 root.destruction()
             allNeighborhood.clear()
             move = None
